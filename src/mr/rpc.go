@@ -1,29 +1,27 @@
 package mr
 
-//
-// RPC definitions.
-//
-// remember to capitalize all names.
-//
+import (
+	"log"
+	"net/rpc"
+	"os"
+	"strconv"
+)
 
-import "os"
-import "strconv"
-
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
-
-type ExampleArgs struct {
-	X int
+type Empty struct {
 }
 
-type ExampleReply struct {
-	Y int
+type RegisterWorkerReply struct {
+	WorkerID int
 }
 
-// Add your RPC definitions here.
+type RequestTaskArgs struct {
+	WorkerID int
+}
 
+type CompleteTaskArgs struct {
+	TaskID   int
+	WorkerID int
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
@@ -33,4 +31,22 @@ func coordinatorSock() string {
 	s := "/var/tmp/824-mr-"
 	s += strconv.Itoa(os.Getuid())
 	return s
+}
+
+func call(rpcName string, args interface{}, reply interface{}) (bool, error) {
+	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	sockName := coordinatorSock()
+	client, err := rpc.DialHTTP("unix", sockName)
+	if err != nil {
+		return false, err
+	}
+	defer client.Close()
+
+	err = client.Call(rpcName, args, reply)
+	if err == nil {
+		return true, nil
+	}
+
+	log.Println(err)
+	return false, nil
 }
