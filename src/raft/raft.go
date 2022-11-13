@@ -352,7 +352,9 @@ func (rf *Raft) runAsFollower() {
 			return
 		}
 
-		rf.logger.log(infoLogLevel, FollowerFlow, "follower is killed")
+		if rf.killed() {
+			rf.logger.log(infoLogLevel, FollowerFlow, "follower is killed")
+		}
 	}()
 }
 
@@ -429,7 +431,9 @@ func (rf *Raft) runAsCandidate() {
 			rf.mu.Unlock()
 		}
 
-		rf.logger.log(infoLogLevel, CandidateFlow, "candidate is killed")
+		if rf.killed() {
+			rf.logger.log(infoLogLevel, CandidateFlow, "candidate is killed")
+		}
 	}()
 }
 
@@ -483,6 +487,10 @@ func (rf *Raft) sendPeriodicHeartbeats() {
 		}
 
 		time.Sleep(heartbeatInterval)
+	}
+
+	if rf.killed() {
+		rf.logger.log(infoLogLevel, LeaderFlow, "leader is killed")
 	}
 }
 
@@ -565,10 +573,10 @@ func Make(
 	applyCh chan ApplyMsg,
 ) *Raft {
 	logger := NewLogger(infoLogLevel, map[Flow]bool{
-		FollowerFlow:       true,
-		CandidateFlow:      true,
-		LeaderFlow:         true,
-		LeaderElectionFlow: true,
+		//FollowerFlow:       true,
+		//CandidateFlow:      true,
+		//LeaderFlow:         true,
+		//LeaderElectionFlow: true,
 		LogReplicationFlow: true,
 	}, me)
 
