@@ -573,10 +573,10 @@ func Make(
 	applyCh chan ApplyMsg,
 ) *Raft {
 	logger := NewLogger(infoLogLevel, map[Flow]bool{
-		//FollowerFlow:       true,
-		//CandidateFlow:      true,
-		//LeaderFlow:         true,
-		//LeaderElectionFlow: true,
+		FollowerFlow:       true,
+		CandidateFlow:      true,
+		LeaderFlow:         true,
+		LeaderElectionFlow: true,
 		LogReplicationFlow: true,
 	}, me)
 
