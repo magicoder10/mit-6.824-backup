@@ -61,7 +61,7 @@ type ApplyMsg struct {
 }
 
 func (a ApplyMsg) String() string {
-	return fmt.Sprintf("[LogEntry Command=%v Index=%v]", a.Command, a.CommandIndex)
+	return fmt.Sprintf("[ApplyMsg Command=%v Index=%v]", a.Command, a.CommandIndex)
 }
 
 type LogEntry struct {
