@@ -413,7 +413,6 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 
 		logEntriesCopy := make([]LogEntry, len(rf.logEntries)-nextLogIndex+1)
 		copy(logEntriesCopy, rf.logEntries[nextLogIndex-1:])
-
 		args := AppendEntriesArgs{
 			LeaderTerm:        rf.currentTerm,
 			LeaderId:          rf.me,
