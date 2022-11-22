@@ -464,8 +464,6 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 // should call killed() to check whether it should stop.
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
-	// TODO: fix send on closed channel
-
 	go func() {
 		rf.replicateLogsChUseWaitGroup.Wait()
 		rf.commitLogChUseWaitGroup.Wait()
