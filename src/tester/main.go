@@ -11,8 +11,8 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) < 5 {
-		fmt.Println("Usage: go run runner/main.go [testPattern] [testSrcDir] [totalTimes] [logOutputDir] [numParallelWorkers]")
-		fmt.Println("Eg. go run runner/main.go TestFigure8Unreliable2C ./raft/... 2000 ./logs/TestFigure8Unreliable2C-2 10")
+		fmt.Println("Usage: go run tester/main.go [testPattern] [testSrcDir] [totalTimes] [logOutputDir] [numParallelWorkers]")
+		fmt.Println("Eg. go run tester/main.go TestFigure8Unreliable2C ./raft/... 2000 ./logs/TestFigure8Unreliable2C-2 10")
 		return
 	}
 
