@@ -50,6 +50,7 @@ func (a AppendEntriesArgs) String() string {
 }
 
 type AppendEntriesReply struct {
-	PeerTerm int
-	Success  bool
+	PeerTerm     int
+	Success      bool
+	ConflictTerm int
 }
