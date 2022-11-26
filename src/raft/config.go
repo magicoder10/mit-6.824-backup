@@ -8,20 +8,23 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
-import "bytes"
-import "log"
-import "sync"
-import "sync/atomic"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"bytes"
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"math/big"
+	"math/rand"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+)
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -267,13 +270,11 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 }
 
-//
 // start or re-start a Raft.
 // if one already exists, "kill" it first.
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-//
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 	cfg.crash1(i)
 
@@ -358,7 +359,7 @@ func (cfg *config) cleanup() {
 
 // attach server i to the net.
 func (cfg *config) connect(i int) {
-	// fmt.Printf("connect(%d)\n", i)
+	fmt.Printf("connect(%d)\n", i)
 
 	cfg.connected[i] = true
 
@@ -381,7 +382,7 @@ func (cfg *config) connect(i int) {
 
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
-	// fmt.Printf("disconnect(%d)\n", i)
+	fmt.Printf("disconnect(%d)\n", i)
 
 	cfg.connected[i] = false
 
@@ -422,13 +423,11 @@ func (cfg *config) setlongreordering(longrel bool) {
 	cfg.net.LongReordering(longrel)
 }
 
-//
 // check that one of the connected servers thinks
 // it is the leader, and that no other connected
 // server thinks otherwise.
 //
 // try a few times in case re-elections are needed.
-//
 func (cfg *config) checkOneLeader() int {
 	for iters := 0; iters < 10; iters++ {
 		ms := 450 + (rand.Int63() % 100)
@@ -477,10 +476,8 @@ func (cfg *config) checkTerms() int {
 	return term
 }
 
-//
 // check that none of the connected servers
 // thinks it is the leader.
-//
 func (cfg *config) checkNoLeader() {
 	for i := 0; i < cfg.n; i++ {
 		if cfg.connected[i] {

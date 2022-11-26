@@ -30,7 +30,7 @@ const (
 	LeaderFlow         Flow = "Leader"
 	LeaderElectionFlow Flow = "Election"
 	LogReplicationFlow Flow = "LogReplicate"
-	RebootFlow         Flow = "Reboot"
+	PersistenceFlow    Flow = "Persistence"
 	LogCompactionFlow  Flow = "Compact"
 )
 
