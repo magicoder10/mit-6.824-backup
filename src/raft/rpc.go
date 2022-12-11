@@ -32,7 +32,7 @@ func (r RequestVoteReply) String() string {
 
 type AppendEntriesArgs struct {
 	LeaderTerm        int
-	LeaderId          int
+	LeaderID          int
 	PrevLogIndex      int
 	PrevLogTerm       int
 	Entries           []LogEntry
@@ -40,9 +40,9 @@ type AppendEntriesArgs struct {
 }
 
 func (a AppendEntriesArgs) String() string {
-	return fmt.Sprintf("[AppendEntriesArgs LeaderTerm=%v LeaderId=%v PrevLogIndex=%v PrevLogTerm=%v Entries=%v LeaderCommitIndex=%v]",
+	return fmt.Sprintf("[AppendEntriesArgs LeaderTerm=%v LeaderID=%v PrevLogIndex=%v PrevLogTerm=%v Entries=%v LeaderCommitIndex=%v]",
 		a.LeaderTerm,
-		a.LeaderId,
+		a.LeaderID,
 		a.PrevLogIndex,
 		a.PrevLogTerm,
 		a.Entries,
@@ -53,4 +53,28 @@ type AppendEntriesReply struct {
 	PeerTerm     int
 	Success      bool
 	ConflictTerm int
+}
+
+type InstallSnapshotArgs struct {
+	LeaderTerm                int
+	LeaderID                  int
+	SnapshotLastIncludedIndex int
+	SnapshotLastIncludedTerm  int
+	SnapshotData              []byte
+}
+
+func (i InstallSnapshotArgs) String() string {
+	return fmt.Sprintf("[InstallSnapshotArgs LeaderTerm=%v LeaderID=%v SnapshotLastIncludedIndex=%v SnapshotLastIncludedTerm=%v]",
+		i.LeaderTerm,
+		i.LeaderID,
+		i.SnapshotLastIncludedIndex,
+		i.SnapshotLastIncludedTerm)
+}
+
+type InstallSnapshotReply struct {
+	PeerTerm int
+}
+
+func (i InstallSnapshotReply) String() string {
+	return fmt.Sprintf("[InstallSnapshotReply PeerTerm=%v]", i.PeerTerm)
 }
