@@ -31,8 +31,9 @@ import (
 	"6.824/labrpc"
 )
 
-const heartbeatInterval = 150 * time.Millisecond
-const minElectionTimeout = 400 * time.Millisecond
+const heartbeatInterval = 120 * time.Millisecond
+const minElectionTimeout = 500 * time.Millisecond
+const retryBackOff = 10 * time.Millisecond
 
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
@@ -115,10 +116,9 @@ type Raft struct {
 	nextLogToSendIndices     []int
 	lastReplicatedLogIndices []int
 
-	replicateLogsCh       chan bool
-	replicateLogsToPeerCh []chan bool
-	commitLogCh           chan bool
-	installingSnapshot    bool
+	replicateLogsCh    chan bool
+	commitLogCh        chan bool
+	installingSnapshot bool
 }
 
 // return currentTerm and whether this server
@@ -286,7 +286,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 		rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("snapshot up to date, skipping: currentLastIncludedIndex=%v newLastIncludedTerm=%v",
 			rf.snapshotLastIncludedIndex,
 			index))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot 1")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot")
 		return
 	}
 
@@ -296,13 +296,15 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	raftState, err := rf.encodeState()
 	if err != nil {
 		rf.logger.log(errorLogLevel, SnapshotFlow, fmt.Sprintf("encode state: err=%v", err))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot")
 		return
 	}
 
 	rf.persister.SaveStateAndSnapshot(raftState, snapshot)
-	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("finish taking snapshot: lastIncludedTerm=%v", index))
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot 3")
+	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("finish taking snapshot: newLastIncludedTerm=%v lastIncludedTerm=%v",
+		rf.snapshotLastIncludedIndex,
+		index))
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Snapshot")
 }
 
 func (rf *Raft) trimLogEntries(lastRelativeIndexToTrim int) {
@@ -349,7 +351,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.snapshotLastIncludedIndex,
 			rf.currentTerm,
 			args.Term))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 		return
 	}
 
@@ -377,7 +379,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("[RequestVote] vote already granted to candidate: currentTerm=%v candidateId=%v",
 				rf.currentTerm,
 				args.CandidateId))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 3")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 			return
 		}
 
@@ -385,7 +387,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.currentTerm,
 			intPtrToString(rf.votedForCandidateID),
 			args.CandidateId))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 4")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 		return
 	}
 
@@ -400,7 +402,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			args.Term,
 			lastLogTerm,
 			args.LastLogTerm))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 5")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 		return
 	}
 
@@ -412,7 +414,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			args.Term,
 			rf.absoluteIndex(logLen),
 			args.LastLogIndex))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 6")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 		return
 	}
 
@@ -427,7 +429,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		lastLogIndex,
 		args.LastLogTerm,
 		args.LastLogIndex))
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote 7")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] RequestVote")
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -435,7 +437,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		args))
 
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] AppendEntries 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] AppendEntries")
 	defer rf.mu.Unlock()
 	reply.Success = false
 	reply.PeerTerm = rf.currentTerm
@@ -445,7 +447,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.snapshotLastIncludedIndex,
 			args.LeaderTerm,
 			rf.currentTerm))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries 3")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries")
 		return
 	}
 
@@ -479,7 +481,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			args.PrevLogIndex))
 		rf.logger.log(debugLogLevel, LogReplicationFlow, fmt.Sprintf("[AppendEntries] logEntries=%v", rf.logEntries))
 		reply.ConflictTerm = rf.findTermBeforeOrEqual(args.PrevLogTerm)
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries 4")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries")
 		return
 	}
 
@@ -495,7 +497,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 					args.PrevLogTerm))
 				rf.logger.log(debugLogLevel, LogReplicationFlow, fmt.Sprintf("[AppendEntries] logEntries=%v", rf.logEntries))
 				reply.ConflictTerm = rf.findTermBeforeOrEqual(args.PrevLogTerm)
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries 5")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries")
 				return
 			}
 		}
@@ -578,17 +580,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	reply.Success = true
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries 6")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] AppendEntries")
 }
 
 func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] receive install snapshot: args=%v",
 		args))
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] InstallSnapshot 1")
+
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] InstallSnapshot")
 	reply.PeerTerm = rf.currentTerm
 	if args.LeaderTerm < rf.currentTerm {
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot")
 		rf.mu.Unlock()
 		return
 	}
@@ -616,45 +619,55 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 	rf.receivedMessageFromLeader = true
 
+	if rf.installingSnapshot {
+		rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("Installing snapshot, skipping install snapshot request: lastIncludedIndex=%v lastIncludedTerm=%v",
+			args.SnapshotLastIncludedIndex,
+			args.SnapshotLastIncludedTerm))
+		rf.mu.Unlock()
+		return
+	}
+
 	relativeSnapshotLastIncludedIndex := rf.relativeIndex(args.SnapshotLastIncludedIndex)
 	if relativeSnapshotLastIncludedIndex < 1 {
 		rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] snapshot up to date, skipping: currentLastIncludedIndex=%v newLastIncludedTerm=%v",
 			rf.snapshotLastIncludedIndex,
 			args.SnapshotLastIncludedIndex))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot 3")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot")
 		rf.mu.Unlock()
 		return
 	}
 
-	if relativeSnapshotLastIncludedIndex < len(rf.logEntries) &&
-		rf.logEntries[relativeSnapshotLastIncludedIndex-1].LeaderReceivedTerm == args.SnapshotLastIncludedTerm {
-		rf.commitLogIndex = max(rf.commitLogIndex, args.SnapshotLastIncludedIndex-1)
-	}
-
 	rf.installingSnapshot = true
-
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot 4")
+	commitLogCh := rf.commitLogCh
 	rf.mu.Unlock()
 
-	rf.commitLogCh <- true
+	rf.logger.log(infoLogLevel, SnapshotFlow, "[InstallSnapshot] finish applying the last command if there is one")
+	commitLogCh <- true
 
+	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] installing snapshot: currentLastIncludedIndex=%v newLastIncludedTerm=%v",
+		args.SnapshotLastIncludedIndex,
+		args.SnapshotLastIncludedTerm))
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] InstallSnapshot 2")
-
 	relativeSnapshotLastIncludedIndex = rf.relativeIndex(args.SnapshotLastIncludedIndex)
 	if relativeSnapshotLastIncludedIndex < 1 {
 		rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] snapshot up to date, skipping: currentLastIncludedIndex=%v newLastIncludedTerm=%v",
 			rf.snapshotLastIncludedIndex,
 			args.SnapshotLastIncludedIndex))
 		rf.installingSnapshot = false
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot 5")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot")
 		rf.mu.Unlock()
 		return
 	}
 
 	if relativeSnapshotLastIncludedIndex >= len(rf.logEntries) ||
 		rf.logEntries[relativeSnapshotLastIncludedIndex-1].LeaderReceivedTerm != args.SnapshotLastIncludedTerm {
+		rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] clearing log entries: currentLastIncludedIndex=%v newLastIncludedTerm=%v",
+			args.SnapshotLastIncludedIndex,
+			args.SnapshotLastIncludedTerm))
+		rf.logger.log(debugLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] clearing log entries: logEntries=%v",
+			rf.logEntries))
 		rf.logEntries = make([]LogEntry, 0)
+
 	} else {
 		rf.trimLogEntries(relativeSnapshotLastIncludedIndex)
 	}
@@ -665,14 +678,14 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	if err != nil {
 		rf.logger.log(errorLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] encode state: err=%v", err))
 		rf.installingSnapshot = false
-		rf.logger.log(infoLogLevel, LockFlow, "[mu][release] InstallSnapshot 6")
+		rf.logger.log(infoLogLevel, LockFlow, "[mu][release] InstallSnapshot")
 		rf.mu.Unlock()
 		return
 	}
 
 	rf.persister.SaveStateAndSnapshot(raftState, args.SnapshotData)
 	rf.commitLogIndex = max(rf.commitLogIndex, args.SnapshotLastIncludedIndex)
-	rf.lastAppliedLogIndex = max(rf.lastAppliedLogIndex, args.SnapshotLastIncludedIndex)
+	rf.lastAppliedLogIndex = args.SnapshotLastIncludedIndex
 	rf.mu.Unlock()
 
 	applyMsg := ApplyMsg{
@@ -685,13 +698,17 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	rf.applyCh <- applyMsg
 
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] InstallSnapshot 3")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] InstallSnapshot")
 
 	defer rf.mu.Unlock()
 	rf.installingSnapshot = false
-	rf.logger.log(infoLogLevel, SnapshotFlow, "[InstallSnapshot] snapshot installed")
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot 7")
-
+	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("[InstallSnapshot] installed snapshot: lastIncludedIndex=%v lastIncludedTerm=%v",
+		args.SnapshotLastIncludedIndex,
+		args.SnapshotLastIncludedTerm))
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] InstallSnapshot")
+	go func() {
+		commitLogCh <- true
+	}()
 }
 
 func (rf *Raft) findTermBeforeOrEqual(peerTerm int) int {
@@ -748,14 +765,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	defer rf.mu.Unlock()
 	if rf.killed() {
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start 1")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start")
 		return 0, rf.currentTerm, rf.role == LeaderRole
 	}
 
 	if rf.role != LeaderRole {
 		rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("only leader can receive client command: command=%v",
 			command))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start")
 		return 0, rf.currentTerm, false
 	}
 
@@ -779,13 +796,13 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		replicateLogsCh <- true
 	}()
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start 3")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] Start")
 	return nextLogIndex, rf.currentTerm, true
 }
 
 func (rf *Raft) replicateLogEntries() {
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries")
 
 	requiredPeers := len(rf.peers) / 2
 	lastLogIndexToReplicate := rf.absoluteIndex(len(rf.logEntries))
@@ -797,7 +814,7 @@ func (rf *Raft) replicateLogEntries() {
 		rf.snapshotLastIncludedIndex,
 		lastLogIndexToReplicate))
 	rf.logger.log(debugLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntries] logEntries=%v", rf.logEntries))
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 	rf.mu.Unlock()
 
 	var replicateLogsMut sync.Mutex
@@ -810,22 +827,21 @@ func (rf *Raft) replicateLogEntries() {
 		}
 
 		rf.mu.Lock()
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries")
 		if rf.role != LeaderRole {
 			rf.logger.log(infoLogLevel, LogReplicationFlow, "not leader anymore when replicating log")
-
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 			rf.mu.Unlock()
 			return
 		}
 
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 3")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 		rf.mu.Unlock()
 
 		go func(peerId int) {
 			updateToDate := rf.replicateLogEntriesToPeer(peerId, lastLogIndexToReplicate, leaderCommitLogIndex)
-			replicateLogsMut.Lock()
 
+			replicateLogsMut.Lock()
 			if updateToDate {
 				replicatedPeerCount++
 			} else {
@@ -843,19 +859,18 @@ func (rf *Raft) replicateLogEntries() {
 	}
 
 	if !waitForReplication {
-		rf.logger.log(infoLogLevel, LogReplicationFlow, "exit log replication")
 		replicateLogsMut.Unlock()
+		rf.logger.log(infoLogLevel, LogReplicationFlow, "exit log replication")
 		return
 	}
 
 	replicateLogsMut.Unlock()
-
 	if rf.killed() {
 		return
 	}
 
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries 3")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntries")
 
 	defer rf.mu.Unlock()
 	if rf.currentTerm != replicateEntriesTerm {
@@ -864,14 +879,14 @@ func (rf *Raft) replicateLogEntries() {
 			rf.snapshotLastIncludedIndex,
 			replicateEntriesTerm,
 			rf.currentTerm))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 4")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 		return
 	}
 
 	if rf.role != LeaderRole {
 		rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("not leader any more, stopped replicating log to peers: role=%v",
 			rf.role))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 5")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 		return
 	}
 
@@ -881,7 +896,7 @@ func (rf *Raft) replicateLogEntries() {
 		lastLogIndexToReplicate))
 	if lastLogIndexToReplicate <= 0 {
 		rf.logger.log(infoLogLevel, LogReplicationFlow, "no entry is replicated, skip committing")
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 6")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 		return
 	}
 
@@ -892,7 +907,7 @@ func (rf *Raft) replicateLogEntries() {
 			rf.snapshotLastIncludedIndex,
 			lastEntryTerm,
 			rf.currentTerm))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 7")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 		return
 	}
 
@@ -904,36 +919,26 @@ func (rf *Raft) replicateLogEntries() {
 			rf.snapshotLastIncludedIndex,
 			oldCommitLogIndex,
 			rf.commitLogIndex))
-		if rf.installingSnapshot {
-			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("installing snapshot, skip applying commits: snapshotLastTerm=%v snapshotLastIndex=%v oldCommitLogIndex=%v newCommitLogIndex=%v",
-				rf.snapshotLastIncludedTerm,
-				rf.snapshotLastIncludedIndex,
-				oldCommitLogIndex,
-				rf.commitLogIndex))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 8")
-			return
-		}
-
 		commitLogCh := rf.commitLogCh
 		go func() {
 			commitLogCh <- true
 		}()
 	}
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries 9")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
 }
 
 func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate int, leaderCommitLogIndex int) bool {
 	for !rf.killed() {
 		rf.mu.Lock()
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer 1")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer")
 
 		if rf.role != LeaderRole {
 			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] not leader any more, stop replicating log to peer: role=%v peerId=%v",
 				rf.role,
 				peerId))
 
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 1")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
@@ -945,7 +950,7 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				rf.snapshotLastIncludedIndex,
 				rf.lastReplicatedLogIndices[peerId],
 				lastLogIndexToReplicate))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
@@ -957,7 +962,7 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				rf.snapshotLastIncludedIndex,
 				rf.absoluteIndex(len(rf.logEntries)),
 				lastLogIndexToReplicate))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 3")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
@@ -970,7 +975,7 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				rf.snapshotLastIncludedIndex,
 				nextLogIndex,
 				lastLogIndexToReplicate))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 4")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
@@ -984,36 +989,39 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				SnapshotData:              rf.persister.ReadSnapshot(),
 			}
 
-			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] start installing snapshot to peer: peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v",
+			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] start installing snapshot to peer: peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v nextLogIndex=%v",
 				peerId,
 				rf.snapshotLastIncludedTerm,
-				rf.snapshotLastIncludedIndex))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 5")
+				rf.snapshotLastIncludedIndex,
+				nextLogIndex))
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 
 			reply := InstallSnapshotReply{}
 			requestSucceed := rf.sendInstallSnapshot(peerId, &args, &reply)
 
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer")
 			if !requestSucceed {
 				rf.logger.log(errorLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] fail to install snapshot to peer(RPC): peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v",
 					peerId,
 					rf.snapshotLastIncludedTerm,
 					rf.snapshotLastIncludedIndex))
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 6")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 				rf.mu.Unlock()
+
+				time.Sleep(retryBackOff)
 				continue
 			}
 
 			if rf.role != LeaderRole {
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 7")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 				rf.mu.Unlock()
 				return false
 			}
 
 			if rf.currentTerm != args.LeaderTerm {
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 8")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 				rf.mu.Unlock()
 				return false
 			}
@@ -1027,9 +1035,13 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				rf.nextLogToSendIndices[peerId],
 				rf.lastReplicatedLogIndices[peerId],
 			))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 9")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
+			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] finish installing snapshot to peer: peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v",
+				peerId,
+				rf.snapshotLastIncludedTerm,
+				rf.snapshotLastIncludedIndex))
 			rf.mu.Unlock()
-			return true
+			continue
 		}
 
 		rf.logger.log(debugLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] before replicating log entries to peer: peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v lastLogIndexToReplicate=%v nextLogIndex=%v logEntries=%v",
@@ -1057,33 +1069,35 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 			rf.snapshotLastIncludedTerm,
 			rf.snapshotLastIncludedIndex,
 			args))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 10")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 		rf.mu.Unlock()
 
 		reply := AppendEntriesReply{}
 		requestSucceed := rf.sendAppendEntries(peerId, &args, &reply)
 
 		rf.mu.Lock()
-		rf.logger.log(infoLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer 3")
+		rf.logger.log(infoLogLevel, LockFlow, "[mu][acquire] replicateLogEntriesToPeer")
 		if !requestSucceed {
 			rf.logger.log(errorLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] fail to replicate log entries to peer(RPC): peerId=%v snapshotLastTerm=%v snapshotLastIndex=%v nextLogIndex=%v",
 				peerId,
 				rf.snapshotLastIncludedTerm,
 				rf.snapshotLastIncludedIndex,
 				rf.nextLogToSendIndices[peerId]))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 11")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
+
+			time.Sleep(retryBackOff)
 			continue
 		}
 
 		if rf.role != LeaderRole {
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 12")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
 
 		if rf.currentTerm != args.LeaderTerm {
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 13")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return false
 		}
@@ -1095,7 +1109,7 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 				peerId,
 				rf.nextLogToSendIndices[peerId],
 				rf.lastReplicatedLogIndices[peerId]))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 14")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 			rf.mu.Unlock()
 			return true
 		}
@@ -1134,8 +1148,10 @@ func (rf *Raft) replicateLogEntriesToPeer(peerId int, lastLogIndexToReplicate in
 			rf.nextLogToSendIndices[peerId],
 		))
 		rf.logger.log(debugLogLevel, LogReplicationFlow, fmt.Sprintf("[replicateLogEntriesToPeer] logEntries=%v", rf.logEntries))
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer 15")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntriesToPeer")
 		rf.mu.Unlock()
+
+		time.Sleep(retryBackOff)
 	}
 
 	return false
@@ -1167,7 +1183,7 @@ func (rf *Raft) runAsFollower() {
 			rf.waitForElectionTimeout()
 
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsFollower 1")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsFollower")
 			rf.logger.log(infoLogLevel, FollowerFlow, fmt.Sprintf("follower election timeout: role=%v", rf.role))
 			if rf.role != FollowerRole {
 				rf.mu.Unlock()
@@ -1179,13 +1195,13 @@ func (rf *Raft) runAsFollower() {
 				rf.logger.log(infoLogLevel, FollowerFlow, "received message from peer or granted vote to peer")
 				rf.receivedMessageFromLeader = false
 				rf.grantedVoteToPeer = false
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsFollower 2")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsFollower")
 				rf.mu.Unlock()
 				continue
 			}
 
 			rf.role = CandidateRole
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsFollower 3")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsFollower")
 			rf.mu.Unlock()
 			rf.runAsCandidate()
 			return
@@ -1208,10 +1224,10 @@ func (rf *Raft) runAsCandidate() {
 	go func() {
 		for !rf.killed() {
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate 1")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate")
 			if rf.role != CandidateRole {
 				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("not candidate any more, exit election: role=%v", rf.role))
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 1")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 				rf.mu.Unlock()
 				return
 			}
@@ -1222,7 +1238,7 @@ func (rf *Raft) runAsCandidate() {
 				rf.persist()
 				currentTerm := rf.currentTerm
 
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 2")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 				rf.mu.Unlock()
 
 				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("start election: newTerm=%v", currentTerm))
@@ -1235,14 +1251,14 @@ func (rf *Raft) runAsCandidate() {
 						halfVotes+1))
 
 					rf.mu.Lock()
-					rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate 2")
+					rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate")
 					rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("electionTerm=%v, currentTerm=%v",
 						electionTerm,
 						rf.currentTerm))
 					if electionTerm < rf.currentTerm {
 						// new election started after election timeout
 						rf.logger.log(infoLogLevel, LeaderElectionFlow, "votes outdated")
-						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 3")
+						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 						rf.mu.Unlock()
 						return
 					}
@@ -1250,7 +1266,7 @@ func (rf *Raft) runAsCandidate() {
 					if rf.role != CandidateRole {
 						// received heartbeat from new leader & fallback to follower
 						rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("not candidate, abandoned vote result: role=%s", rf.role))
-						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 4")
+						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 						rf.mu.Unlock()
 						return
 					}
@@ -1258,7 +1274,7 @@ func (rf *Raft) runAsCandidate() {
 					if grantedVotes > halfVotes {
 						rf.logger.log(infoLogLevel, LeaderElectionFlow, "received enough votes, elected as leader")
 						rf.role = LeaderRole
-						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 5")
+						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 						rf.mu.Unlock()
 						rf.runAsLeader()
 						return
@@ -1267,18 +1283,18 @@ func (rf *Raft) runAsCandidate() {
 					if grantedVotes < halfVotes {
 						rf.logger.log(infoLogLevel, LeaderElectionFlow, "not enough votes, fallback to follower")
 						rf.role = FollowerRole
-						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 6")
+						rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 						rf.mu.Unlock()
 						rf.runAsFollower()
 						return
 					}
 
-					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 7")
+					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 					rf.mu.Unlock()
 					rf.logger.log(infoLogLevel, LeaderElectionFlow, "split vote, no leader")
 				}(currentTerm)
 			} else {
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 8")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 				rf.mu.Unlock()
 			}
 
@@ -1286,9 +1302,9 @@ func (rf *Raft) runAsCandidate() {
 			rf.waitForElectionTimeout()
 
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate 3")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsCandidate")
 			rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("candidate election timeout: role=%v", rf.role))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate 9")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsCandidate")
 			rf.mu.Unlock()
 		}
 
@@ -1306,7 +1322,7 @@ func (rf *Raft) waitForElectionTimeout() {
 
 func (rf *Raft) runAsLeader() {
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsLeader 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsLeader")
 	rf.logger.log(infoLogLevel, LeaderFlow, fmt.Sprintf("running as leader: term=%v", rf.currentTerm))
 
 	numPeers := len(rf.peers)
@@ -1317,7 +1333,7 @@ func (rf *Raft) runAsLeader() {
 	rf.lastReplicatedLogIndices = make([]int, numPeers)
 	replicateLogsCh := rf.replicateLogsCh
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader")
 	rf.mu.Unlock()
 
 	go func() {
@@ -1332,40 +1348,74 @@ func (rf *Raft) runAsLeader() {
 			}
 
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsLeader 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] runAsLeader")
 
 			if rf.role != LeaderRole {
 				rf.logger.log(infoLogLevel, LogReplicationFlow, "replicate is not leader anymore")
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader 1")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader")
 				rf.mu.Unlock()
 				return
 			}
 
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] runAsLeader")
 			rf.mu.Unlock()
 			rf.replicateLogEntries()
 		}
 	}()
+	go func() {
+		replicateLogsCh <- true
+	}()
 }
 
 func (rf *Raft) sendPeriodicHeartbeats() {
-	for !rf.killed() {
-		rf.mu.Lock()
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] sendPeriodicHeartbeats")
-
-		if rf.role != LeaderRole {
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendPeriodicHeartbeats 1")
-			rf.mu.Unlock()
-			return
+	for peerId := 0; peerId < len(rf.peers) && !rf.killed(); peerId++ {
+		if peerId == rf.me {
+			continue
 		}
 
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendPeriodicHeartbeats 2")
-		rf.mu.Unlock()
-		go func() {
-			rf.logger.log(infoLogLevel, LeaderElectionFlow, "send heartbeat")
-			rf.replicateLogEntries()
-		}()
-		time.Sleep(heartbeatInterval)
+		go func(peerId int) {
+			for !rf.killed() {
+				rf.mu.Lock()
+				heartbeatTerm := rf.currentTerm
+				if rf.role != LeaderRole {
+					rf.mu.Unlock()
+					rf.logger.log(errorLogLevel, LeaderFlow, fmt.Sprintf("not leader anymore, stop sending heartbeat: heartbeatTerm=%v ", heartbeatTerm))
+					return
+				}
+
+				prevLogIndex := rf.absoluteIndex(len(rf.logEntries))
+				args := AppendEntriesArgs{
+					LeaderTerm:        heartbeatTerm,
+					LeaderID:          rf.me,
+					PrevLogIndex:      prevLogIndex,
+					PrevLogTerm:       rf.logEntryTerm(prevLogIndex),
+					Entries:           []LogEntry{},
+					LeaderCommitIndex: rf.commitLogIndex,
+				}
+				rf.logger.log(infoLogLevel, LeaderFlow, fmt.Sprintf("send heartbeat to peer: peerId=%v heartbeatTerm=%v snapshotLastTerm=%v snapshotLastIndex=%v args=%v",
+					peerId,
+					heartbeatTerm,
+					rf.snapshotLastIncludedTerm,
+					rf.snapshotLastIncludedIndex,
+					args))
+				rf.mu.Unlock()
+
+				reply := AppendEntriesReply{}
+
+				go func() {
+					requestSucceed := rf.sendAppendEntries(peerId, &args, &reply)
+					if !requestSucceed {
+						rf.logger.log(errorLogLevel, LeaderFlow, fmt.Sprintf("fail to send heartbeat to peer (RPC): peerId=%v heartbeatTerm=%v", peerId, heartbeatTerm))
+					}
+				}()
+
+				time.Sleep(heartbeatInterval)
+			}
+
+			if rf.killed() {
+				rf.logger.log(infoLogLevel, LeaderFlow, "leader is killed")
+			}
+		}(peerId)
 	}
 
 	if rf.killed() {
@@ -1375,7 +1425,7 @@ func (rf *Raft) sendPeriodicHeartbeats() {
 
 func (rf *Raft) requestVoteFromPeers() int {
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] requestVoteFromPeers 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] requestVoteFromPeers")
 
 	requestedTerm := rf.currentTerm
 	requestVoteArgs := RequestVoteArgs{
@@ -1386,7 +1436,7 @@ func (rf *Raft) requestVoteFromPeers() int {
 	requestVoteArgs.LastLogIndex = rf.absoluteIndex(len(rf.logEntries))
 	requestVoteArgs.LastLogTerm = rf.logEntryTerm(requestVoteArgs.LastLogIndex)
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers")
 	rf.mu.Unlock()
 
 	receivedVotes := make([]bool, len(rf.peers))
@@ -1404,10 +1454,10 @@ func (rf *Raft) requestVoteFromPeers() int {
 		go func(peerIndex int) {
 			for {
 				rf.mu.Lock()
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] requestVoteFromPeers 2")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] requestVoteFromPeers")
 
 				if rf.role != CandidateRole {
-					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers 2")
+					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers")
 					rf.mu.Unlock()
 					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("not candidate, stop requesting vote: peerId=%v requestedTerm=%v", peerIndex, requestedTerm))
 
@@ -1419,7 +1469,7 @@ func (rf *Raft) requestVoteFromPeers() int {
 				}
 
 				if rf.currentTerm != requestedTerm {
-					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers 3")
+					rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers")
 					rf.mu.Unlock()
 					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote outdated: peerId=%v requestedTerm=%v ", peerIndex, requestedTerm))
 
@@ -1430,7 +1480,7 @@ func (rf *Raft) requestVoteFromPeers() int {
 					return
 				}
 
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers 4")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] requestVoteFromPeers")
 				rf.mu.Unlock()
 
 				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote from peer: peerId=%v requestedTerm=%v", peerIndex, requestedTerm))
@@ -1440,6 +1490,7 @@ func (rf *Raft) requestVoteFromPeers() int {
 					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("fail to request vote from peer(RPC): peerId=%v requestedTerm=%v",
 						peerIndex,
 						requestedTerm))
+					time.Sleep(retryBackOff)
 					continue
 				}
 
@@ -1502,19 +1553,29 @@ func (rf *Raft) requestVoteFromPeers() int {
 
 func (rf *Raft) applyCommittedEntries() {
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] applyCommittedEntries 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] applyCommittedEntries")
 	commitLogCh := rf.commitLogCh
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries")
 	rf.mu.Unlock()
 
 	for range commitLogCh {
 		for {
 			rf.mu.Lock()
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] applyCommittedEntries 2")
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] applyCommittedEntries")
+			if rf.installingSnapshot {
+				rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("installing snapshot, skip applying commits: snapshotLastTerm=%v snapshotLastIndex=%v newCommitLogIndex=%v",
+					rf.snapshotLastIncludedTerm,
+					rf.snapshotLastIncludedIndex,
+					rf.commitLogIndex))
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] replicateLogEntries")
+				rf.mu.Unlock()
+				break
+			}
+
 			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("processing commits: commitLogIndex=%v lastAppliedLogIndex=%v", rf.commitLogIndex, rf.lastAppliedLogIndex))
 			if rf.commitLogIndex <= rf.lastAppliedLogIndex {
 				rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("all commits are applied: commitLogIndex=%v lastAppliedLogIndex=%v", rf.commitLogIndex, rf.lastAppliedLogIndex))
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries 2")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries")
 				rf.mu.Unlock()
 				break
 			}
@@ -1522,15 +1583,18 @@ func (rf *Raft) applyCommittedEntries() {
 			relativeIndex := rf.relativeIndex(rf.lastAppliedLogIndex + 1)
 			if relativeIndex < 1 {
 				rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("log entry is inside snapshot, skipping: lastAppliedLogIndex=%v relativeIndex=%v", rf.lastAppliedLogIndex, relativeIndex))
-				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries 3")
+				rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries")
 				rf.mu.Unlock()
 				break
 			}
 
 			rf.lastAppliedLogIndex++
 			logEntry := rf.logEntries[relativeIndex-1]
-			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("applying commit: commitLogIndex=%v lastAppliedLogIndex=%v", rf.commitLogIndex, rf.lastAppliedLogIndex))
-			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries 4")
+			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("applying commit: commitLogIndex=%v lastAppliedLogIndex=%v relativeIndex=%v", rf.commitLogIndex, rf.lastAppliedLogIndex, relativeIndex))
+			rf.logger.log(debugLogLevel, LockFlow, "[mu][release] applyCommittedEntries")
+
+			commitLogIndex := rf.commitLogIndex
+			lastAppliedLogIndex := rf.lastAppliedLogIndex
 			rf.mu.Unlock()
 
 			applyMsg := ApplyMsg{
@@ -1540,6 +1604,7 @@ func (rf *Raft) applyCommittedEntries() {
 			}
 
 			rf.applyCh <- applyMsg
+			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("applied commit: commitLogIndex=%v lastAppliedLogIndex=%v", commitLogIndex, lastAppliedLogIndex))
 		}
 	}
 }
@@ -1559,14 +1624,14 @@ func Make(
 	persister *Persister,
 	applyCh chan ApplyMsg,
 ) *Raft {
-	logger := NewLogger(infoLogLevel, map[Flow]bool{
+	logger := NewLogger(debugLogLevel, map[Flow]bool{
 		FollowerFlow:       true,
 		CandidateFlow:      true,
 		LeaderFlow:         true,
-		LeaderElectionFlow: false,
+		LeaderElectionFlow: true,
 		LogReplicationFlow: true,
 		PersistenceFlow:    false,
-		SnapshotFlow:       false,
+		SnapshotFlow:       true,
 		LockFlow:           false,
 	}, me)
 	rf := &Raft{
@@ -1633,9 +1698,9 @@ func Make(
 // is no need to implement your own timeouts around Call().
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] sendRequestVote 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] sendRequestVote")
 	rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("(%v)[sendRequestVote] send request: peerId=%v currentTerm=%v args=%v", rf.peers[server].Endname, server, rf.currentTerm, args))
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote 1")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote")
 	rf.mu.Unlock()
 
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -1644,7 +1709,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	}
 
 	rf.mu.Lock()
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] sendRequestVote 2")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][acquire] sendRequestVote")
 	defer rf.mu.Unlock()
 
 	rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("(%v)[sendRequestVote] received response: peerId=%v peerTerm=%v currentTerm=%v reply=%v", rf.peers[server].Endname, server, reply.PeerTerm, rf.currentTerm, reply))
@@ -1659,11 +1724,11 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.runAsFollower()
 		}
 
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote 2")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote")
 		return true
 	}
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote 3")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendRequestVote")
 	return true
 }
 
@@ -1687,11 +1752,11 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.runAsFollower()
 		}
 
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendAppendEntries 1")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendAppendEntries")
 		return true
 	}
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendAppendEntries 2")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendAppendEntries")
 	return true
 }
 
@@ -1714,11 +1779,11 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 			rf.runAsFollower()
 		}
 
-		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendInstallSnapshot 1")
+		rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendInstallSnapshot")
 		return true
 	}
 
-	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendInstallSnapshot 2")
+	rf.logger.log(debugLogLevel, LockFlow, "[mu][release] sendInstallSnapshot")
 	return true
 }
 
