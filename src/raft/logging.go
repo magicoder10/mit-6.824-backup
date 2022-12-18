@@ -32,7 +32,6 @@ const (
 	LogReplicationFlow Flow = "LogReplicate"
 	PersistenceFlow    Flow = "Persistence"
 	SnapshotFlow       Flow = "Snapshot"
-	LockFlow           Flow = "Lock"
 	RPCFlow            Flow = "RPCFlow"
 )
 

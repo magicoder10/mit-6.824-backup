@@ -7,16 +7,16 @@ import (
 type RequestVoteArgs struct {
 	RequestID    int
 	Term         int
-	CandidateId  int
+	CandidateID  int
 	LastLogIndex int
 	LastLogTerm  int
 }
 
 func (r RequestVoteArgs) String() string {
-	return fmt.Sprintf("[RequestVoteArgs RequestID=%v Term=%v CandidateId=%v LastLogIndex=%v LastLogTerm=%v]",
+	return fmt.Sprintf("[RequestVoteArgs RequestID=%v Term=%v CandidateID=%v LastLogIndex=%v LastLogTerm=%v]",
 		r.RequestID,
 		r.Term,
-		r.CandidateId,
+		r.CandidateID,
 		r.LastLogIndex,
 		r.LastLogTerm)
 }
@@ -58,6 +58,14 @@ type AppendEntriesReply struct {
 	Success       bool
 	ConflictTerm  int
 	ConflictIndex int
+}
+
+func (a AppendEntriesReply) String() string {
+	return fmt.Sprintf("[AppendEntriesReply PeerTerm=%v Success=%v ConflictTerm=%v ConflictIndex=%v]",
+		a.PeerTerm,
+		a.Success,
+		a.ConflictTerm,
+		a.ConflictIndex)
 }
 
 type InstallSnapshotArgs struct {
