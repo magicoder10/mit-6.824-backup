@@ -133,137 +133,6 @@ func (rf *Raft) GetState() (int, bool) {
 	return rf.currentTerm, rf.role == LeaderRole
 }
 
-// save Raft's persistent state to stable storage,
-// where it can later be retrieved after a crash and restart.
-// see paper's Figure 2 for a description of what should be persistent.
-func (rf *Raft) persist() {
-	data, err := rf.encodeState()
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode state: err=%v", err))
-		return
-	}
-
-	rf.persister.SaveRaftState(data)
-
-	rf.logger.log(infoLogLevel, PersistenceFlow, "write start")
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: currentTerm=%v",
-		rf.currentTerm))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: votedForCandidateID=%v",
-		intPtrToString(rf.votedForCandidateID)))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: logEntries=%v",
-		rf.logEntries))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: snapshotLastIncludedIndex=%v",
-		rf.snapshotLastIncludedIndex))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: snapshotLastIncludedTerm=%v",
-		rf.snapshotLastIncludedTerm))
-	rf.logger.log(infoLogLevel, PersistenceFlow, "write end")
-}
-
-func (rf *Raft) encodeState() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	encoder := labgob.NewEncoder(buf)
-	err := encoder.Encode(rf.currentTerm)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: err=%v", err))
-		return nil, err
-	}
-
-	var votedForCandidateID = -1
-	if rf.votedForCandidateID != nil {
-		votedForCandidateID = *rf.votedForCandidateID
-	}
-
-	err = encoder.Encode(votedForCandidateID)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode votedForCandidateID: err=%v", err))
-		return nil, err
-	}
-
-	err = encoder.Encode(rf.logEntries)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode logEntries: err=%v", err))
-		return nil, err
-	}
-
-	err = encoder.Encode(rf.snapshotLastIncludedIndex)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode snapshotLastIncludedIndex: err=%v", err))
-		return nil, err
-	}
-
-	err = encoder.Encode(rf.snapshotLastIncludedTerm)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode snapshotLastIncludedTerm: err=%v", err))
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-// restore previously persisted state.
-func (rf *Raft) readPersist(data []byte) {
-	if data == nil || len(data) < 1 {
-		rf.logger.log(infoLogLevel, PersistenceFlow, "initial state is empty")
-		return
-	}
-
-	buf := bytes.NewBuffer(data)
-	decoder := labgob.NewDecoder(buf)
-	var currentTerm int
-	var votedForCandidateID int
-	var logEntries []LogEntry
-
-	err := decoder.Decode(&currentTerm)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: err=%v", err))
-		return
-	}
-
-	err = decoder.Decode(&votedForCandidateID)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read votedForCandidateID: err=%v", err))
-		return
-	}
-
-	err = decoder.Decode(&logEntries)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read logEntries: err=%v", err))
-		return
-	}
-
-	err = decoder.Decode(&rf.snapshotLastIncludedIndex)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedIndex: err=%v", err))
-		return
-	}
-
-	err = decoder.Decode(&rf.snapshotLastIncludedTerm)
-	if err != nil {
-		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedTerm: err=%v", err))
-		return
-	}
-
-	rf.currentTerm = currentTerm
-	if votedForCandidateID >= 0 {
-		rf.votedForCandidateID = &votedForCandidateID
-	}
-
-	rf.logEntries = logEntries
-
-	rf.logger.log(infoLogLevel, PersistenceFlow, "read start")
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: currentTerm=%v",
-		rf.currentTerm))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: votedForCandidateID=%v",
-		intPtrToString(rf.votedForCandidateID)))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: logEntries=%v",
-		rf.logEntries))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedIndex: snapshotLastIncludedIndex=%v",
-		rf.snapshotLastIncludedIndex))
-	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedTerm: snapshotLastIncludedTerm=%v",
-		rf.snapshotLastIncludedTerm))
-	rf.logger.log(infoLogLevel, PersistenceFlow, "read end")
-}
-
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
 // have more recent info since it communicate the snapshot on applyCh.
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
@@ -304,34 +173,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("finish taking snapshot: newLastIncludedTerm=%v lastIncludedTerm=%v",
 		rf.snapshotLastIncludedIndex,
 		index))
-}
-
-func (rf *Raft) trimLogEntries(lastRelativeIndexToTrim int) {
-	trimmedLogEntries := rf.logEntries[lastRelativeIndexToTrim:]
-	logEntriesCopy := make([]LogEntry, len(trimmedLogEntries))
-	copy(logEntriesCopy, trimmedLogEntries)
-
-	rf.logger.log(debugLogLevel, SnapshotFlow, fmt.Sprintf("trimming log entries: oldLogEntries=%v newLogEntries=%v",
-		rf.logEntries,
-		logEntriesCopy))
-	rf.logEntries = logEntriesCopy
-}
-
-func (rf *Raft) relativeIndex(index int) int {
-	return index - rf.snapshotLastIncludedIndex
-}
-
-func (rf *Raft) absoluteIndex(index int) int {
-	return rf.snapshotLastIncludedIndex + index
-}
-
-func (rf *Raft) logEntryTerm(index int) int {
-	relativeIndex := rf.relativeIndex(index)
-	if relativeIndex < 1 {
-		return rf.snapshotLastIncludedTerm
-	}
-
-	return rf.logEntries[relativeIndex-1].LeaderReceivedTerm
 }
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
@@ -746,36 +587,6 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	}()
 }
 
-func (rf *Raft) findIndexOfFirstLogEntry(term int) int {
-	if term == rf.snapshotLastIncludedTerm {
-		return rf.snapshotLastIncludedIndex
-	}
-
-	for index := 0; index < len(rf.logEntries); index++ {
-		logEntry := rf.logEntries[index]
-		if logEntry.LeaderReceivedTerm == term {
-			return logEntry.Index
-		}
-	}
-
-	return 0
-}
-
-func (rf *Raft) findIndexOfLastLogEntry(term int) int {
-	for index := len(rf.logEntries) - 1; index >= 0; index-- {
-		logEntry := rf.logEntries[index]
-		if logEntry.LeaderReceivedTerm == term {
-			return logEntry.Index
-		}
-	}
-
-	if term == rf.snapshotLastIncludedTerm {
-		return rf.snapshotLastIncludedIndex
-	}
-
-	return 0
-}
-
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -832,17 +643,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return nextLogIndex, rf.currentTerm, true
 }
 
-func (rf *Raft) getNextLogIndex(conflictTerm int, conflictIndex int) int {
-	if conflictTerm > 0 {
-		index := rf.findIndexOfLastLogEntry(conflictTerm)
-		if index > 0 {
-			return index + 1
-		}
-	}
-
-	return max(conflictIndex, 1)
-}
-
 // the tester doesn't halt goroutines created by Raft after each test,
 // but it does call the Kill() method. your code can use killed() to
 // check whether Kill() has been called. the use of atomic avoids the
@@ -856,9 +656,112 @@ func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 }
 
-func (rf *Raft) killed() bool {
-	z := atomic.LoadInt32(&rf.dead)
-	return z == 1
+// the service or tester wants to create a Raft server. the ports
+// of all the Raft servers (including this one) are in peers[]. this
+// server's port is peers[me]. all the servers' peers[] arrays
+// have the same order. persister is a place for this server to
+// save its persistent state, and also initially holds the most
+// recent saved state, if any. applyCh is a channel on which the
+// tester or service expects Raft to send ApplyMsg messages.
+// Make() must return quickly, so it should start goroutines
+// for any long-running work.
+func Make(
+	peers []*labrpc.ClientEnd,
+	me int,
+	persister *Persister,
+	applyCh chan ApplyMsg,
+) *Raft {
+	logger := NewLogger(offLogLevel, map[Flow]bool{
+		FollowerFlow:       true,
+		CandidateFlow:      true,
+		LeaderFlow:         true,
+		LeaderElectionFlow: true,
+		LogReplicationFlow: true,
+		PersistenceFlow:    false,
+		SnapshotFlow:       true,
+		RPCFlow:            true,
+	}, me)
+	rf := &Raft{
+		logger:                   logger,
+		peers:                    peers,
+		persister:                persister,
+		applyCh:                  applyCh,
+		me:                       me,
+		role:                     FollowerRole,
+		currentTerm:              0,
+		logEntries:               make([]LogEntry, 0),
+		commitLogIndex:           0,
+		lastAppliedLogIndex:      0,
+		nextLogToSendIndices:     make([]int, len(peers)),
+		lastReplicatedLogIndices: make([]int, len(peers)),
+		replicateLogToPeerChs:    make([]chan int, len(peers)),
+		commitLogCh:              make(chan bool),
+	}
+
+	rf.logger.log(infoLogLevel, PersistenceFlow, "loading state")
+	rf.readPersist(persister.ReadRaftState())
+	rf.logger.log(infoLogLevel, FollowerFlow, "start as follower")
+	go func() {
+		rf.runAsFollower()
+	}()
+
+	lastIncludedIndex := rf.snapshotLastIncludedIndex
+	lastIncludedTerm := rf.snapshotLastIncludedTerm
+	go func() {
+		if lastIncludedIndex > 0 {
+			snapshotData := rf.persister.ReadSnapshot()
+
+			rf.mu.Lock()
+			rf.commitLogIndex = lastIncludedIndex
+			rf.lastAppliedLogIndex = lastIncludedIndex
+			rf.mu.Unlock()
+
+			applyMsg := ApplyMsg{
+				SnapshotValid: true,
+				Snapshot:      snapshotData,
+				SnapshotIndex: lastIncludedIndex,
+				SnapshotTerm:  lastIncludedTerm,
+			}
+			rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("Applying snapshot: applyMsg=%v", applyMsg))
+			rf.applyCh <- applyMsg
+		}
+		rf.applyCommittedEntries()
+	}()
+
+	replicateLogToPeerChs := rf.replicateLogToPeerChs
+	for peerID := 0; peerID < len(rf.peers); peerID++ {
+		if peerID == rf.me {
+			continue
+		}
+
+		rf.replicateLogToPeerChs[peerID] = make(chan int)
+		go func(peerID int) {
+			for replicationTerm := range replicateLogToPeerChs[peerID] {
+				if rf.killed() {
+					rf.logger.log(infoLogLevel, LogReplicationFlow, "server is killed, stop log replication")
+					return
+				}
+
+				rf.mu.Lock()
+				if rf.role != LeaderRole {
+					rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("not leader, skipping log replication: role=%v", rf.role))
+					rf.mu.Unlock()
+					continue
+				}
+
+				if replicationTerm != rf.currentTerm {
+					rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("log replication outdated: currentTerm=%v replicationTerm=%v", rf.currentTerm, replicationTerm))
+					rf.mu.Unlock()
+					continue
+				}
+
+				rf.mu.Unlock()
+				rf.replicateLogToPeer(peerID, replicationTerm)
+			}
+		}(peerID)
+	}
+
+	return rf
 }
 
 func (rf *Raft) runAsFollower() {
@@ -894,12 +797,6 @@ func (rf *Raft) runAsFollower() {
 			rf.logger.log(infoLogLevel, FollowerFlow, "follower is killed")
 		}
 	}()
-}
-
-func (rf *Raft) enterNewTerm(newTerm int) {
-	rf.currentTerm = newTerm
-	rf.votedForCandidateID = nil
-	rf.persist()
 }
 
 func (rf *Raft) runAsCandidate() {
@@ -984,12 +881,6 @@ func (rf *Raft) runAsCandidate() {
 	}()
 }
 
-func (rf *Raft) waitForElectionTimeout() {
-	randTimeout := time.Duration(rand.Intn(maxElectionTimeoutOffsetRange)) * time.Millisecond
-	electionTimeout := randTimeout + minElectionTimeout
-	time.Sleep(electionTimeout)
-}
-
 func (rf *Raft) runAsLeader() {
 	rf.mu.Lock()
 	rf.logger.log(infoLogLevel, LeaderFlow, fmt.Sprintf("running as leader: term=%v", rf.currentTerm))
@@ -1005,6 +896,125 @@ func (rf *Raft) runAsLeader() {
 	go func() {
 		rf.sendPeriodicHeartbeat()
 	}()
+}
+
+func (rf *Raft) requestVoteFromPeers() int {
+	rf.mu.Lock()
+	requestedTerm := rf.currentTerm
+	lastLogIndex := rf.absoluteIndex(len(rf.logEntries))
+	lastLogTerm := rf.logEntryTerm(lastLogIndex)
+	rf.mu.Unlock()
+
+	receivedVotes := make([]bool, len(rf.peers))
+	votesGranted := 0
+	totalVotesReceived := 0
+	waitForVote := true
+	var voteMut sync.Mutex
+	voteCond := sync.NewCond(&voteMut)
+
+	for peerIndex := 0; peerIndex < len(rf.peers); peerIndex++ {
+		if peerIndex == rf.me {
+			continue
+		}
+
+		go func(peerIndex int) {
+			for {
+				rf.mu.Lock()
+				if rf.role != CandidateRole {
+					rf.mu.Unlock()
+					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("not candidate, stop requesting vote: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
+
+					voteMut.Lock()
+					waitForVote = false
+					voteMut.Unlock()
+					voteCond.Signal()
+					return
+				}
+
+				if rf.currentTerm != requestedTerm {
+					rf.mu.Unlock()
+					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote outdated: peerID=%v requestedTerm=%v ", peerIndex, requestedTerm))
+
+					voteMut.Lock()
+					waitForVote = false
+					voteMut.Unlock()
+					voteCond.Signal()
+					return
+				}
+
+				args := RequestVoteArgs{
+					Term:         requestedTerm,
+					CandidateID:  rf.me,
+					LastLogIndex: lastLogIndex,
+					LastLogTerm:  lastLogTerm,
+				}
+				rf.mu.Unlock()
+
+				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote from peer: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
+				var reply RequestVoteReply
+				rf.sendRequestVote(peerIndex, &args, &reply)
+
+				voteMut.Lock()
+				if receivedVotes[peerIndex] {
+					voteMut.Unlock()
+					return
+				}
+
+				receivedVotes[peerIndex] = true
+				if reply.PeerTerm > requestedTerm {
+					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote outdated: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
+					waitForVote = false
+					voteMut.Unlock()
+					voteCond.Signal()
+					return
+				}
+
+				totalVotesReceived++
+
+				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("received vote from peer: peerID=%v reply=%v", peerIndex, reply))
+				if reply.VoteGranted {
+					rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("granted vote from peer: peerID=%v requestedTerm=%v votesGranted=%v totalVotesReceived=%v",
+						peerIndex,
+						requestedTerm,
+						votesGranted,
+						totalVotesReceived))
+					votesGranted++
+				}
+
+				voteMut.Unlock()
+				voteCond.Signal()
+				return
+			}
+		}(peerIndex)
+	}
+
+	totalVotesRequested := len(rf.peers) - 1
+	requiredVoteGrants := totalVotesRequested / 2
+
+	voteMut.Lock()
+	defer voteMut.Unlock()
+	for waitForVote && votesGranted < requiredVoteGrants && totalVotesReceived < totalVotesRequested {
+		rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("waiting for new incoming vote: requestedTerm=%v votesGranted=%v requiredVoteGrants=%v totalVotesReceived=%v",
+			requestedTerm,
+			votesGranted,
+			requiredVoteGrants,
+			totalVotesReceived))
+		voteCond.Wait()
+	}
+
+	rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("exit requesting votes: requestedTerm=%v waitForVote=%v votesGranted=%v totalVotesReceived=%v totalVotesRequested=%v",
+		requestedTerm,
+		waitForVote,
+		votesGranted,
+		totalVotesReceived,
+		totalVotesRequested))
+	return votesGranted
+}
+
+func (rf *Raft) waitForElectionTimeout() {
+	randTimeout := time.Duration(rand.Intn(maxElectionTimeoutOffsetRange)) * time.Millisecond
+	electionTimeout := randTimeout + minElectionTimeout
+	time.Sleep(electionTimeout)
 }
 
 func (rf *Raft) replicateLogToPeer(peerID int, replicationTerm int) {
@@ -1272,119 +1282,6 @@ func (rf *Raft) sendPeriodicHeartbeat() {
 	}
 }
 
-func (rf *Raft) requestVoteFromPeers() int {
-	rf.mu.Lock()
-	requestedTerm := rf.currentTerm
-	lastLogIndex := rf.absoluteIndex(len(rf.logEntries))
-	lastLogTerm := rf.logEntryTerm(lastLogIndex)
-	rf.mu.Unlock()
-
-	receivedVotes := make([]bool, len(rf.peers))
-	votesGranted := 0
-	totalVotesReceived := 0
-	waitForVote := true
-	var voteMut sync.Mutex
-	voteCond := sync.NewCond(&voteMut)
-
-	for peerIndex := 0; peerIndex < len(rf.peers); peerIndex++ {
-		if peerIndex == rf.me {
-			continue
-		}
-
-		go func(peerIndex int) {
-			for {
-				rf.mu.Lock()
-				if rf.role != CandidateRole {
-					rf.mu.Unlock()
-					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("not candidate, stop requesting vote: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
-
-					voteMut.Lock()
-					waitForVote = false
-					voteMut.Unlock()
-					voteCond.Signal()
-					return
-				}
-
-				if rf.currentTerm != requestedTerm {
-					rf.mu.Unlock()
-					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote outdated: peerID=%v requestedTerm=%v ", peerIndex, requestedTerm))
-
-					voteMut.Lock()
-					waitForVote = false
-					voteMut.Unlock()
-					voteCond.Signal()
-					return
-				}
-
-				args := RequestVoteArgs{
-					Term:         requestedTerm,
-					CandidateID:  rf.me,
-					LastLogIndex: lastLogIndex,
-					LastLogTerm:  lastLogTerm,
-				}
-				rf.mu.Unlock()
-
-				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote from peer: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
-				var reply RequestVoteReply
-				rf.sendRequestVote(peerIndex, &args, &reply)
-
-				voteMut.Lock()
-				if receivedVotes[peerIndex] {
-					voteMut.Unlock()
-					return
-				}
-
-				receivedVotes[peerIndex] = true
-				if reply.PeerTerm > requestedTerm {
-					rf.logger.log(errorLogLevel, LeaderElectionFlow, fmt.Sprintf("request vote outdated: peerID=%v requestedTerm=%v", peerIndex, requestedTerm))
-					waitForVote = false
-					voteMut.Unlock()
-					voteCond.Signal()
-					return
-				}
-
-				totalVotesReceived++
-
-				rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("received vote from peer: peerID=%v reply=%v", peerIndex, reply))
-				if reply.VoteGranted {
-					rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("granted vote from peer: peerID=%v requestedTerm=%v votesGranted=%v totalVotesReceived=%v",
-						peerIndex,
-						requestedTerm,
-						votesGranted,
-						totalVotesReceived))
-					votesGranted++
-				}
-
-				voteMut.Unlock()
-				voteCond.Signal()
-				return
-			}
-		}(peerIndex)
-	}
-
-	totalVotesRequested := len(rf.peers) - 1
-	requiredVoteGrants := totalVotesRequested / 2
-
-	voteMut.Lock()
-	defer voteMut.Unlock()
-	for waitForVote && votesGranted < requiredVoteGrants && totalVotesReceived < totalVotesRequested {
-		rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("waiting for new incoming vote: requestedTerm=%v votesGranted=%v requiredVoteGrants=%v totalVotesReceived=%v",
-			requestedTerm,
-			votesGranted,
-			requiredVoteGrants,
-			totalVotesReceived))
-		voteCond.Wait()
-	}
-
-	rf.logger.log(infoLogLevel, LeaderElectionFlow, fmt.Sprintf("exit requesting votes: requestedTerm=%v waitForVote=%v votesGranted=%v totalVotesReceived=%v totalVotesRequested=%v",
-		requestedTerm,
-		waitForVote,
-		votesGranted,
-		totalVotesReceived,
-		totalVotesRequested))
-	return votesGranted
-}
-
 func (rf *Raft) applyCommittedEntries() {
 	rf.mu.Lock()
 	commitLogCh := rf.commitLogCh
@@ -1434,114 +1331,6 @@ func (rf *Raft) applyCommittedEntries() {
 			rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("applied commit: commitLogIndex=%v lastAppliedLogIndex=%v", commitLogIndex, lastAppliedLogIndex))
 		}
 	}
-}
-
-// the service or tester wants to create a Raft server. the ports
-// of all the Raft servers (including this one) are in peers[]. this
-// server's port is peers[me]. all the servers' peers[] arrays
-// have the same order. persister is a place for this server to
-// save its persistent state, and also initially holds the most
-// recent saved state, if any. applyCh is a channel on which the
-// tester or service expects Raft to send ApplyMsg messages.
-// Make() must return quickly, so it should start goroutines
-// for any long-running work.
-func Make(
-	peers []*labrpc.ClientEnd,
-	me int,
-	persister *Persister,
-	applyCh chan ApplyMsg,
-) *Raft {
-	logger := NewLogger(offLogLevel, map[Flow]bool{
-		FollowerFlow:       true,
-		CandidateFlow:      true,
-		LeaderFlow:         true,
-		LeaderElectionFlow: true,
-		LogReplicationFlow: true,
-		PersistenceFlow:    false,
-		SnapshotFlow:       true,
-		RPCFlow:            true,
-	}, me)
-	rf := &Raft{
-		logger:                   logger,
-		peers:                    peers,
-		persister:                persister,
-		applyCh:                  applyCh,
-		me:                       me,
-		role:                     FollowerRole,
-		currentTerm:              0,
-		logEntries:               make([]LogEntry, 0),
-		commitLogIndex:           0,
-		lastAppliedLogIndex:      0,
-		nextLogToSendIndices:     make([]int, len(peers)),
-		lastReplicatedLogIndices: make([]int, len(peers)),
-		replicateLogToPeerChs:    make([]chan int, len(peers)),
-		commitLogCh:              make(chan bool),
-	}
-
-	rf.logger.log(infoLogLevel, PersistenceFlow, "loading state")
-	rf.readPersist(persister.ReadRaftState())
-	rf.logger.log(infoLogLevel, FollowerFlow, "start as follower")
-	go func() {
-		rf.runAsFollower()
-	}()
-
-	lastIncludedIndex := rf.snapshotLastIncludedIndex
-	lastIncludedTerm := rf.snapshotLastIncludedTerm
-	go func() {
-		if lastIncludedIndex > 0 {
-			snapshotData := rf.persister.ReadSnapshot()
-
-			rf.mu.Lock()
-			rf.commitLogIndex = lastIncludedIndex
-			rf.lastAppliedLogIndex = lastIncludedIndex
-			rf.mu.Unlock()
-
-			applyMsg := ApplyMsg{
-				SnapshotValid: true,
-				Snapshot:      snapshotData,
-				SnapshotIndex: lastIncludedIndex,
-				SnapshotTerm:  lastIncludedTerm,
-			}
-			rf.logger.log(infoLogLevel, SnapshotFlow, fmt.Sprintf("Applying snapshot: applyMsg=%v", applyMsg))
-			rf.applyCh <- applyMsg
-		}
-		rf.applyCommittedEntries()
-	}()
-
-	replicateLogToPeerChs := rf.replicateLogToPeerChs
-	for peerID := 0; peerID < len(rf.peers); peerID++ {
-		if peerID == rf.me {
-			continue
-		}
-
-		rf.replicateLogToPeerChs[peerID] = make(chan int)
-		go func(peerID int) {
-			for replicationTerm := range replicateLogToPeerChs[peerID] {
-				if rf.killed() {
-					rf.logger.log(infoLogLevel, LogReplicationFlow, "server is killed, stop log replication")
-					return
-				}
-
-				rf.mu.Lock()
-				if rf.role != LeaderRole {
-					rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("not leader, skipping log replication: role=%v", rf.role))
-					rf.mu.Unlock()
-					continue
-				}
-
-				if replicationTerm != rf.currentTerm {
-					rf.logger.log(infoLogLevel, LogReplicationFlow, fmt.Sprintf("log replication outdated: currentTerm=%v replicationTerm=%v", rf.currentTerm, replicationTerm))
-					rf.mu.Unlock()
-					continue
-				}
-
-				rf.mu.Unlock()
-				rf.replicateLogToPeer(peerID, replicationTerm)
-			}
-		}(peerID)
-	}
-
-	return rf
 }
 
 // The labrpc package simulates a lossy network, in which servers
@@ -1681,6 +1470,217 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 	}
 
 	return true
+}
+
+// save Raft's persistent state to stable storage,
+// where it can later be retrieved after a crash and restart.
+// see paper's Figure 2 for a description of what should be persistent.
+func (rf *Raft) persist() {
+	data, err := rf.encodeState()
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode state: err=%v", err))
+		return
+	}
+
+	rf.persister.SaveRaftState(data)
+
+	rf.logger.log(infoLogLevel, PersistenceFlow, "write start")
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: currentTerm=%v",
+		rf.currentTerm))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: votedForCandidateID=%v",
+		intPtrToString(rf.votedForCandidateID)))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: logEntries=%v",
+		rf.logEntries))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: snapshotLastIncludedIndex=%v",
+		rf.snapshotLastIncludedIndex))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: snapshotLastIncludedTerm=%v",
+		rf.snapshotLastIncludedTerm))
+	rf.logger.log(infoLogLevel, PersistenceFlow, "write end")
+}
+
+func (rf *Raft) encodeState() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	encoder := labgob.NewEncoder(buf)
+	err := encoder.Encode(rf.currentTerm)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("write currentTerm: err=%v", err))
+		return nil, err
+	}
+
+	var votedForCandidateID = -1
+	if rf.votedForCandidateID != nil {
+		votedForCandidateID = *rf.votedForCandidateID
+	}
+
+	err = encoder.Encode(votedForCandidateID)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode votedForCandidateID: err=%v", err))
+		return nil, err
+	}
+
+	err = encoder.Encode(rf.logEntries)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode logEntries: err=%v", err))
+		return nil, err
+	}
+
+	err = encoder.Encode(rf.snapshotLastIncludedIndex)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode snapshotLastIncludedIndex: err=%v", err))
+		return nil, err
+	}
+
+	err = encoder.Encode(rf.snapshotLastIncludedTerm)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("encode snapshotLastIncludedTerm: err=%v", err))
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// restore previously persisted state.
+func (rf *Raft) readPersist(data []byte) {
+	if data == nil || len(data) < 1 {
+		rf.logger.log(infoLogLevel, PersistenceFlow, "initial state is empty")
+		return
+	}
+
+	buf := bytes.NewBuffer(data)
+	decoder := labgob.NewDecoder(buf)
+	var currentTerm int
+	var votedForCandidateID int
+	var logEntries []LogEntry
+
+	err := decoder.Decode(&currentTerm)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: err=%v", err))
+		return
+	}
+
+	err = decoder.Decode(&votedForCandidateID)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read votedForCandidateID: err=%v", err))
+		return
+	}
+
+	err = decoder.Decode(&logEntries)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read logEntries: err=%v", err))
+		return
+	}
+
+	err = decoder.Decode(&rf.snapshotLastIncludedIndex)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedIndex: err=%v", err))
+		return
+	}
+
+	err = decoder.Decode(&rf.snapshotLastIncludedTerm)
+	if err != nil {
+		rf.logger.log(errorLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedTerm: err=%v", err))
+		return
+	}
+
+	rf.currentTerm = currentTerm
+	if votedForCandidateID >= 0 {
+		rf.votedForCandidateID = &votedForCandidateID
+	}
+
+	rf.logEntries = logEntries
+
+	rf.logger.log(infoLogLevel, PersistenceFlow, "read start")
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: currentTerm=%v",
+		rf.currentTerm))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: votedForCandidateID=%v",
+		intPtrToString(rf.votedForCandidateID)))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read currentTerm: logEntries=%v",
+		rf.logEntries))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedIndex: snapshotLastIncludedIndex=%v",
+		rf.snapshotLastIncludedIndex))
+	rf.logger.log(infoLogLevel, PersistenceFlow, fmt.Sprintf("read snapshotLastIncludedTerm: snapshotLastIncludedTerm=%v",
+		rf.snapshotLastIncludedTerm))
+	rf.logger.log(infoLogLevel, PersistenceFlow, "read end")
+}
+
+func (rf *Raft) trimLogEntries(lastRelativeIndexToTrim int) {
+	trimmedLogEntries := rf.logEntries[lastRelativeIndexToTrim:]
+	logEntriesCopy := make([]LogEntry, len(trimmedLogEntries))
+	copy(logEntriesCopy, trimmedLogEntries)
+
+	rf.logger.log(debugLogLevel, SnapshotFlow, fmt.Sprintf("trimming log entries: oldLogEntries=%v newLogEntries=%v",
+		rf.logEntries,
+		logEntriesCopy))
+	rf.logEntries = logEntriesCopy
+}
+
+func (rf *Raft) relativeIndex(index int) int {
+	return index - rf.snapshotLastIncludedIndex
+}
+
+func (rf *Raft) absoluteIndex(index int) int {
+	return rf.snapshotLastIncludedIndex + index
+}
+
+func (rf *Raft) logEntryTerm(index int) int {
+	relativeIndex := rf.relativeIndex(index)
+	if relativeIndex < 1 {
+		return rf.snapshotLastIncludedTerm
+	}
+
+	return rf.logEntries[relativeIndex-1].LeaderReceivedTerm
+}
+
+func (rf *Raft) getNextLogIndex(conflictTerm int, conflictIndex int) int {
+	if conflictTerm > 0 {
+		index := rf.findIndexOfLastLogEntry(conflictTerm)
+		if index > 0 {
+			return index + 1
+		}
+	}
+
+	return max(conflictIndex, 1)
+}
+
+func (rf *Raft) findIndexOfFirstLogEntry(term int) int {
+	if term == rf.snapshotLastIncludedTerm {
+		return rf.snapshotLastIncludedIndex
+	}
+
+	for index := 0; index < len(rf.logEntries); index++ {
+		logEntry := rf.logEntries[index]
+		if logEntry.LeaderReceivedTerm == term {
+			return logEntry.Index
+		}
+	}
+
+	return 0
+}
+
+func (rf *Raft) findIndexOfLastLogEntry(term int) int {
+	for index := len(rf.logEntries) - 1; index >= 0; index-- {
+		logEntry := rf.logEntries[index]
+		if logEntry.LeaderReceivedTerm == term {
+			return logEntry.Index
+		}
+	}
+
+	if term == rf.snapshotLastIncludedTerm {
+		return rf.snapshotLastIncludedIndex
+	}
+
+	return 0
+}
+
+func (rf *Raft) enterNewTerm(newTerm int) {
+	rf.currentTerm = newTerm
+	rf.votedForCandidateID = nil
+	rf.persist()
+}
+
+func (rf *Raft) killed() bool {
+	z := atomic.LoadInt32(&rf.dead)
+	return z == 1
 }
 
 type rpcResponse struct {
