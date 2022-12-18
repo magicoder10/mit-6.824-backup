@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -56,9 +58,15 @@ func main() {
 
 					defer outputFile.Close()
 
-					cmd := exec.Command("go", "test", testSrcDir, "--race", "-run", testPattern, "--count=1", "-v")
-					cmd.Stdout = outputFile
-					cmd.Stderr = outputFile
+					cmd := exec.Command("go", "test", testSrcDir, "--race", "-run", testPattern, "-timeout", "1h", "--count=1", "-v")
+					stdoutPipe, err := cmd.StdoutPipe()
+					if err != nil {
+						panic(err)
+					}
+
+					writer := bufio.NewWriter(outputFile)
+					go io.Copy(writer, stdoutPipe)
+
 					err = cmd.Start()
 					if err != nil {
 						fmt.Println(err)
@@ -68,11 +76,12 @@ func main() {
 
 					err = cmd.Wait()
 					if err != nil {
-						fmt.Println(err)
+						fmt.Printf("Error: testIndex=%v, err=%v\n", testIndex, err)
 						finishRunCh <- false
 						return
 					}
 
+					os.Remove(path)
 					finishRunCh <- true
 				}(testIndex)
 			}

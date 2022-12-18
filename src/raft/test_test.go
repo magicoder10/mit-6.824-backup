@@ -1132,7 +1132,6 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 		for i := 0; i < nn; i++ {
 			cfg.rafts[sender].Start(rand.Int())
 		}
-
 		// let applier threads catch up with the Start()'s
 		if disconnect == false && crash == false {
 			// make sure all followers have caught up, so that
