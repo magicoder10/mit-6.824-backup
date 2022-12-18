@@ -36,7 +36,6 @@ func main() {
 
 	os.RemoveAll(logOutputDir)
 	err = os.MkdirAll(logOutputDir, 0700)
-	err = os.MkdirAll(logOutputDir, 0700)
 	if err != nil {
 		panic(err)
 	}
