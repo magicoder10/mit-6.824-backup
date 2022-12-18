@@ -31,7 +31,8 @@ const (
 	LeaderElectionFlow Flow = "Election"
 	LogReplicationFlow Flow = "LogReplicate"
 	PersistenceFlow    Flow = "Persistence"
-	LogCompactionFlow  Flow = "Compact"
+	SnapshotFlow       Flow = "Snapshot"
+	RPCFlow            Flow = "RPCFlow"
 )
 
 type Logger struct {
@@ -45,8 +46,8 @@ func (l Logger) log(level LogLevel, flow Flow, message string) {
 		return
 	}
 
-	_, ok := l.visibleFlows[flow]
-	if !ok {
+	visible, ok := l.visibleFlows[flow]
+	if !ok || !visible {
 		return
 	}
 

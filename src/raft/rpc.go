@@ -5,16 +5,18 @@ import (
 )
 
 type RequestVoteArgs struct {
+	RequestID    int
 	Term         int
-	CandidateId  int
+	CandidateID  int
 	LastLogIndex int
 	LastLogTerm  int
 }
 
 func (r RequestVoteArgs) String() string {
-	return fmt.Sprintf("[RequestVoteArgs Term=%v CandidateId=%v LastLogIndex=%v LastLogTerm=%v]",
+	return fmt.Sprintf("[RequestVoteArgs RequestID=%v Term=%v CandidateID=%v LastLogIndex=%v LastLogTerm=%v]",
+		r.RequestID,
 		r.Term,
-		r.CandidateId,
+		r.CandidateID,
 		r.LastLogIndex,
 		r.LastLogTerm)
 }
@@ -31,26 +33,63 @@ func (r RequestVoteReply) String() string {
 }
 
 type AppendEntriesArgs struct {
+	RequestID         int
 	LeaderTerm        int
-	LeaderId          int
+	LeaderID          int
 	PrevLogIndex      int
 	PrevLogTerm       int
-	Entries           []LogEntry
 	LeaderCommitIndex int
+	Entries           []LogEntry
 }
 
 func (a AppendEntriesArgs) String() string {
-	return fmt.Sprintf("[AppendEntriesArgs LeaderTerm=%v LeaderId=%v PrevLogIndex=%v PrevLogTerm=%v Entries=%v LeaderCommitIndex=%v]",
+	return fmt.Sprintf("[AppendEntriesArgs RequestID=%v LeaderTerm=%v LeaderID=%v PrevLogIndex=%v PrevLogTerm=%v  LeaderCommitIndex=%v Entries=%v]",
+		a.RequestID,
 		a.LeaderTerm,
-		a.LeaderId,
+		a.LeaderID,
 		a.PrevLogIndex,
 		a.PrevLogTerm,
-		a.Entries,
-		a.LeaderCommitIndex)
+		a.LeaderCommitIndex,
+		a.Entries)
 }
 
 type AppendEntriesReply struct {
-	PeerTerm     int
-	Success      bool
-	ConflictTerm int
+	PeerTerm      int
+	Success       bool
+	ConflictTerm  int
+	ConflictIndex int
+}
+
+func (a AppendEntriesReply) String() string {
+	return fmt.Sprintf("[AppendEntriesReply PeerTerm=%v Success=%v ConflictTerm=%v ConflictIndex=%v]",
+		a.PeerTerm,
+		a.Success,
+		a.ConflictTerm,
+		a.ConflictIndex)
+}
+
+type InstallSnapshotArgs struct {
+	RequestID                 int
+	LeaderTerm                int
+	LeaderID                  int
+	SnapshotLastIncludedIndex int
+	SnapshotLastIncludedTerm  int
+	SnapshotData              []byte
+}
+
+func (i InstallSnapshotArgs) String() string {
+	return fmt.Sprintf("[InstallSnapshotArgs RequestID=%v LeaderTerm=%v LeaderID=%v SnapshotLastIncludedIndex=%v SnapshotLastIncludedTerm=%v]",
+		i.RequestID,
+		i.LeaderTerm,
+		i.LeaderID,
+		i.SnapshotLastIncludedIndex,
+		i.SnapshotLastIncludedTerm)
+}
+
+type InstallSnapshotReply struct {
+	PeerTerm int
+}
+
+func (i InstallSnapshotReply) String() string {
+	return fmt.Sprintf("[InstallSnapshotReply PeerTerm=%v]", i.PeerTerm)
 }

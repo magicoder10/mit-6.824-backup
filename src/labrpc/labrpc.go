@@ -49,22 +49,29 @@ package labrpc
 //   pass svc to srv.AddService()
 //
 
-import "6.824/labgob"
-import "bytes"
-import "reflect"
-import "sync"
-import "log"
-import "strings"
-import "math/rand"
-import "time"
-import "sync/atomic"
+import (
+	"bytes"
+	"fmt"
+	"log"
+	"math/rand"
+	"reflect"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"6.824/labgob"
+)
+
+const debug = false
 
 type reqMsg struct {
-	endname  interface{} // name of sending ClientEnd
-	svcMeth  string      // e.g. "Raft.AppendEntries"
-	argsType reflect.Type
-	args     []byte
-	replyCh  chan replyMsg
+	requestID int
+	endname   interface{} // name of sending ClientEnd
+	svcMeth   string      // e.g. "Raft.AppendEntries"
+	argsType  reflect.Type
+	args      []byte
+	replyCh   chan replyMsg
 }
 
 type replyMsg struct {
@@ -81,8 +88,9 @@ type ClientEnd struct {
 // send an RPC, wait for the reply.
 // the return value indicates success; false means that
 // no reply was received from the server.
-func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bool {
+func (e *ClientEnd) Call(requestID int, svcMeth string, args interface{}, reply interface{}) bool {
 	req := reqMsg{}
+	req.requestID = requestID
 	req.endname = e.endname
 	req.svcMeth = svcMeth
 	req.argsType = reflect.TypeOf(args)
@@ -222,11 +230,19 @@ func (rn *Network) processReq(req reqMsg) {
 		if reliable == false {
 			// short delay
 			ms := (rand.Int() % 27)
+			if debug {
+				fmt.Printf("(%v)request is delayed for %v ms: %v\n", req.requestID, ms, req.argsType)
+			}
+
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
 
 		if reliable == false && (rand.Int()%1000) < 100 {
 			// drop the request, return as if timeout
+			if debug {
+				fmt.Printf("(%v)request is dropped: %v\n", req.requestID, req.argsType)
+			}
+
 			req.replyCh <- replyMsg{false, nil}
 			return
 		}
@@ -271,8 +287,15 @@ func (rn *Network) processReq(req reqMsg) {
 
 		if replyOK == false || serverDead == true {
 			// server was killed while we were waiting; return error.
+			if debug {
+				fmt.Printf("(%v)server is killed while waiting for response: %v\n", req.requestID, req.argsType)
+			}
 			req.replyCh <- replyMsg{false, nil}
 		} else if reliable == false && (rand.Int()%1000) < 100 {
+			if debug {
+				fmt.Printf("(%v)response is dropped: %v\n", req.requestID, req.argsType)
+			}
+
 			// drop the reply, return as if timeout
 			req.replyCh <- replyMsg{false, nil}
 		} else if longreordering == true && rand.Intn(900) < 600 {
@@ -281,11 +304,19 @@ func (rn *Network) processReq(req reqMsg) {
 			// Russ points out that this timer arrangement will decrease
 			// the number of goroutines, so that the race
 			// detector is less likely to get upset.
+			if debug {
+				fmt.Printf("(%v)response is delayed for %v ms: %v\n", req.requestID, ms, req.argsType)
+			}
+
 			time.AfterFunc(time.Duration(ms)*time.Millisecond, func() {
 				atomic.AddInt64(&rn.bytes, int64(len(reply.reply)))
 				req.replyCh <- reply
 			})
 		} else {
+			if debug {
+				fmt.Printf("(%v)response has no delay: %v\n", req.requestID, req.argsType)
+			}
+
 			atomic.AddInt64(&rn.bytes, int64(len(reply.reply)))
 			req.replyCh <- reply
 		}
@@ -301,6 +332,11 @@ func (rn *Network) processReq(req reqMsg) {
 			// server in fairly rapid succession.
 			ms = (rand.Int() % 100)
 		}
+
+		if debug {
+			fmt.Printf("(%v)network disabled, will timeout after %v ms: %v\n", req.requestID, ms, req.argsType)
+		}
+
 		time.AfterFunc(time.Duration(ms)*time.Millisecond, func() {
 			req.replyCh <- replyMsg{false, nil}
 		})
@@ -379,11 +415,9 @@ func (rn *Network) GetTotalBytes() int64 {
 	return x
 }
 
-//
 // a server is a collection of services, all sharing
 // the same rpc dispatcher. so that e.g. both a Raft
 // and a k/v server can listen to the same rpc endpoint.
-//
 type Server struct {
 	mu       sync.Mutex
 	services map[string]*Service
