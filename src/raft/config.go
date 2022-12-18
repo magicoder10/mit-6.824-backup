@@ -8,20 +8,25 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
-import "bytes"
-import "log"
-import "sync"
-import "sync/atomic"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"bytes"
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"math/big"
+	"math/rand"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+)
+
+const debug = false
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -107,6 +112,10 @@ func make_config(t *testing.T, n int, unreliable bool, snapshot bool) *config {
 
 // shut down a Raft server but save its persistent state.
 func (cfg *config) crash1(i int) {
+	if debug {
+		fmt.Printf("crash(%d)\n", i)
+	}
+
 	cfg.disconnect(i)
 	cfg.net.DeleteServer(i) // disable client connections to the server.
 
@@ -195,7 +204,7 @@ func (cfg *config) ingestSnap(i int, snapshot []byte, index int) string {
 		return "snapshot Decode() error"
 	}
 	if index != -1 && index != lastIncludedIndex {
-		err := fmt.Sprintf("server %v snapshot doesn't match m.SnapshotIndex", i)
+		err := fmt.Sprintf("server %v snapshot doesn't match m.SnapshotIndex: gotLastIndex=%v expectLastIndex=%v", i, index, lastIncludedIndex)
 		return err
 	}
 	cfg.logs[i] = map[int]interface{}{}
@@ -267,14 +276,16 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 }
 
-//
 // start or re-start a Raft.
 // if one already exists, "kill" it first.
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-//
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
+	if debug {
+		fmt.Printf("start(%d)\n", i)
+	}
+
 	cfg.crash1(i)
 
 	// a fresh set of outgoing ClientEnd names.
@@ -358,9 +369,10 @@ func (cfg *config) cleanup() {
 
 // attach server i to the net.
 func (cfg *config) connect(i int) {
-	// fmt.Printf("connect(%d)\n", i)
-
 	cfg.connected[i] = true
+	if debug {
+		fmt.Printf("connect(%d) status:%v\n", i, cfg.connected)
+	}
 
 	// outgoing ClientEnds
 	for j := 0; j < cfg.n; j++ {
@@ -381,9 +393,10 @@ func (cfg *config) connect(i int) {
 
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
-	// fmt.Printf("disconnect(%d)\n", i)
-
 	cfg.connected[i] = false
+	if debug {
+		fmt.Printf("disconnect(%d) status:%v\n", i, cfg.connected)
+	}
 
 	// outgoing ClientEnds
 	for j := 0; j < cfg.n; j++ {
@@ -422,14 +435,16 @@ func (cfg *config) setlongreordering(longrel bool) {
 	cfg.net.LongReordering(longrel)
 }
 
-//
 // check that one of the connected servers thinks
 // it is the leader, and that no other connected
 // server thinks otherwise.
 //
 // try a few times in case re-elections are needed.
-//
 func (cfg *config) checkOneLeader() int {
+	if debug {
+		fmt.Printf("checkOneLeader")
+	}
+
 	for iters := 0; iters < 10; iters++ {
 		ms := 450 + (rand.Int63() % 100)
 		time.Sleep(time.Duration(ms) * time.Millisecond)
@@ -477,10 +492,8 @@ func (cfg *config) checkTerms() int {
 	return term
 }
 
-//
 // check that none of the connected servers
 // thinks it is the leader.
-//
 func (cfg *config) checkNoLeader() {
 	for i := 0; i < cfg.n; i++ {
 		if cfg.connected[i] {
@@ -561,6 +574,10 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 // if retry==false, calls Start() only once, in order
 // to simplify the early Lab 2B tests.
 func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
+	if debug {
+		fmt.Printf("one(%v) expectedServers=%v\n", cmd, expectedServers)
+	}
+
 	t0 := time.Now()
 	starts := 0
 	for time.Since(t0).Seconds() < 10 && cfg.checkFinished() == false {
@@ -584,6 +601,10 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		}
 
 		if index != -1 {
+			if debug {
+				fmt.Printf("Wait for servers to agree on: command=%v index=%v expectedServers=%v\n", cmd, index, expectedServers)
+			}
+
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
 			t1 := time.Now()
@@ -592,6 +613,10 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {
+						if debug {
+							fmt.Printf("Servers agreed on the command: command=%v index=%v actualServers=%v expectedServers=%v\n", cmd, index, nd, expectedServers)
+						}
+
 						// and it was the command we submitted.
 						return index
 					}
@@ -599,7 +624,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
-				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
+				cfg.t.Fatalf("one(%v) failed to reach agreement: index=%v", cmd, index)
 			}
 		} else {
 			time.Sleep(50 * time.Millisecond)
