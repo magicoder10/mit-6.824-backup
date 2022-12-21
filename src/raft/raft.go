@@ -663,9 +663,9 @@ func Make(
 		FollowerFlow:       true,
 		CandidateFlow:      true,
 		LeaderFlow:         true,
-		LeaderElectionFlow: false,
+		LeaderElectionFlow: true,
 		LogReplicationFlow: true,
-		PersistenceFlow:    false,
+		PersistenceFlow:    true,
 		SnapshotFlow:       true,
 		RPCFlow:            true,
 	}, me)
